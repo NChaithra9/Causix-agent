@@ -1,0 +1,16 @@
+{
+    "name": "Causix",
+    "version": "1.0.0",
+    "description": "Agent workflows for Causix.",
+    "config": {
+        "triggers": [
+            {
+              "name": "input",
+              "type": "str",
+              "required": true,
+              "description": "Name of the user to greet",
+              "friendly_name": "Name"
+            }
+        ]
+    }
+}
