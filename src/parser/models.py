@@ -111,6 +111,7 @@ class RelationshipType(str, Enum):
 
     CONTAINS = "CONTAINS"
     CALLS = "CALLS"
+    IMPORTS = "IMPORTS"  # File -> IMPORTS -> File, when an import resolves to another parsed file in the repo
     MODIFIES = "MODIFIES"  # Commit -> MODIFIES -> File (Git history, Phase 1 requirement 7)
 
 

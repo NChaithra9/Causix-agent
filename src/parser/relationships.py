@@ -8,6 +8,7 @@ relationships between them:
     File   --CONTAINS--> Function
     Class  --CONTAINS--> Method
     Function/Method --CALLS--> Function/Method
+    File   --IMPORTS--> File   (when the import resolves to another parsed file)
 
 The CONTAINS relationships come straight from Step 4's models -- no new
 information is needed, so those are always fully resolved. CALLS
@@ -38,6 +39,7 @@ __all__ = [
     "module_name_for_path",
     "extract_contains_relationships",
     "extract_call_relationships",
+    "extract_import_relationships",
     "extract_relationships_for_file",
     "extract_repository_relationships",
 ]
@@ -81,6 +83,7 @@ class RepoIndex:
 
     functions_by_module: dict[str, set[str]] = field(default_factory=dict)
     classes_by_module: dict[str, set[str]] = field(default_factory=dict)
+    file_by_module: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def build(cls, parsed_files: list[ParsedFile]) -> RepoIndex:
@@ -91,6 +94,7 @@ class RepoIndex:
             module = module_name_for_path(pf.file_path)
             index.functions_by_module[module] = {f.name for f in pf.functions}
             index.classes_by_module[module] = {c.name for c in pf.classes}
+            index.file_by_module[module] = pf.file_path
         return index
 
     def has_symbol(self, module: str, name: str) -> bool:
@@ -206,6 +210,38 @@ def _unparse(node: ast.AST) -> str:
         return "<unparseable>"
 
 
+def _resolve_relative_import_module(importer_file_path: str, module: str) -> str | None:
+    """Turn a relative import's raw module string (e.g. ``".validator"``,
+    ``".."``, ``"..pkg.sub"``) into the same absolute dotted form
+    :func:`module_name_for_path` produces, relative to the importing file's
+    own location -- so it can be looked up in a `RepoIndex` the same way a
+    plain absolute import is.
+
+    Follows ordinary Python relative-import semantics: one leading dot means
+    "the package containing this module", each additional dot goes up one
+    more package level. Returns ``None`` when there aren't enough package
+    levels above the importer to satisfy the number of dots (i.e. it would
+    resolve outside the repository) -- that's left unresolved, never guessed.
+    """
+    stripped = module.lstrip(".")
+    level = len(module) - len(stripped)
+    if level == 0:
+        return module or None
+
+    importer_module = module_name_for_path(importer_file_path)
+    importer_parts = importer_module.split(".") if importer_module else []
+    package_parts = importer_parts[:-1]  # the package *containing* the importer file
+
+    trim = level - 1  # one dot = stay in that package; each extra dot goes up one more
+    if trim > len(package_parts):
+        return None
+
+    base_parts = package_parts[: len(package_parts) - trim] if trim else package_parts
+    if stripped:
+        base_parts = base_parts + stripped.split(".")
+    return ".".join(base_parts) if base_parts else None
+
+
 def _resolve_call(
     func_expr: ast.expr,
     *,
@@ -239,7 +275,9 @@ def _resolve_call(
 
         if name in from_imports:
             module, original_name = from_imports[name]
-            if repo_index is not None and repo_index.has_symbol(module, original_name):
+            if module.startswith("."):
+                module = _resolve_relative_import_module(parsed_file.file_path, module)
+            if module and repo_index is not None and repo_index.has_symbol(module, original_name):
                 return f"{module}.{original_name}", True
 
         return name, False
@@ -329,6 +367,61 @@ def extract_call_relationships(
 
 
 # ---------------------------------------------------------------------------
+# Import relationships: File -> imports -> File (cross-file, when resolvable)
+# ---------------------------------------------------------------------------
+
+
+def extract_import_relationships(
+    parsed_file: ParsedFile, *, repo_index: RepoIndex | None = None
+) -> list[Relationship]:
+    """``File -> IMPORTS -> File`` relationships, for imports that resolve to another parsed file.
+
+    Only created when the imported module deterministically matches another
+    file Step 4 actually parsed in this repository (via ``repo_index``) --
+    an import of an external package (``import os``, ``import requests``)
+    produces no relationship, since there's no in-repo file to point at and
+    nothing here should invent one. A file that imports itself (unusual, but
+    not impossible with re-exports) is also skipped. Each distinct imported
+    file produces at most one relationship, even if several names are
+    imported from it.
+    """
+    if repo_index is None:
+        return []
+
+    relationships: list[Relationship] = []
+    seen_targets: set[str] = set()
+
+    for imp in parsed_file.imports:
+        module = imp.module if imp.module is not None else imp.name
+        if not module:
+            continue
+        if module.startswith("."):
+            module = _resolve_relative_import_module(parsed_file.file_path, module)
+            if module is None:
+                # Not enough package levels above the importer to satisfy
+                # the dots (would resolve outside the repository) -- leave
+                # it unresolved rather than guessing.
+                continue
+
+        target_file = repo_index.file_by_module.get(module)
+        if target_file is None or target_file == parsed_file.file_path or target_file in seen_targets:
+            continue
+        seen_targets.add(target_file)
+
+        relationships.append(
+            Relationship(
+                source=parsed_file.file_path,
+                relationship_type=RelationshipType.IMPORTS,
+                target=target_file,
+                source_file=parsed_file.file_path,
+                line=imp.line,
+            )
+        )
+
+    return relationships
+
+
+# ---------------------------------------------------------------------------
 # Top-level orchestration
 # ---------------------------------------------------------------------------
 
@@ -339,7 +432,7 @@ def extract_relationships_for_file(
     source_path: str | Path | None = None,
     repo_index: RepoIndex | None = None,
 ) -> list[Relationship]:
-    """All relationships (CONTAINS + CALLS) for a single parsed file.
+    """All relationships (CONTAINS + CALLS + IMPORTS) for a single parsed file.
 
     ``source_path`` defaults to ``parsed_file.file_path`` itself, which is
     fine whenever that path is directly readable on disk (e.g. results from
@@ -360,6 +453,7 @@ def extract_relationships_for_file(
         source_path=source_path if source_path is not None else parsed_file.file_path,
         repo_index=repo_index,
     )
+    relationships += extract_import_relationships(parsed_file, repo_index=repo_index)
     return relationships
 
 
@@ -370,8 +464,9 @@ def extract_repository_relationships(
 
     This is the main Step 5 entry point: pass it ``repo_path`` plus the
     ``parse_repository(repo_path)`` result from Step 4, and get back every
-    CONTAINS and CALLS relationship -- with cross-file calls resolved via
-    import information wherever that's deterministically possible.
+    CONTAINS, CALLS, and IMPORTS relationship -- with cross-file calls and
+    imports resolved via import information wherever that's deterministically
+    possible.
     """
     repo_index = RepoIndex.build(parsed_files)
     root = Path(repo_path)
