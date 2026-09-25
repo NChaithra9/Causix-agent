@@ -254,3 +254,78 @@ def test_import_without_matching_definition_is_not_resolved(tmp_path):
     assert len(calls) == 1
     assert calls[0].resolved is False
     assert calls[0].target == "get_payment"
+
+
+# ---------------------------------------------------------------------------
+# File -> IMPORTS -> File (added for Phase 2's graph, per the sample
+# end-to-end test: service.py IMPORTS validator.py)
+# ---------------------------------------------------------------------------
+
+
+def test_file_imports_file_is_resolved_across_files(tmp_path):
+    write(tmp_path, "validator.py", "def validate_payment():\n    pass\n")
+    write(
+        tmp_path,
+        "service.py",
+        "from validator import validate_payment\n\n\nclass PaymentService:\n\n    def process(self):\n        validate_payment()\n",
+    )
+
+    parsed_files = parse_repository(tmp_path)
+    relationships = extract_repository_relationships(tmp_path, parsed_files)
+    imports = relationships_of_type(relationships, RelationshipType.IMPORTS)
+
+    assert len(imports) == 1
+    assert imports[0].source == "service.py"
+    assert imports[0].target == "validator.py"
+    assert imports[0].resolved is True
+
+
+def test_file_imports_external_package_produces_no_relationship(tmp_path):
+    path = write(tmp_path, "service.py", "import requests\n\ndef fetch():\n    requests.get('x')\n")
+    parsed = parse_python_file(path)
+
+    relationships = extract_relationships_for_file(parsed)
+    imports = relationships_of_type(relationships, RelationshipType.IMPORTS)
+
+    assert imports == []
+
+
+def test_relative_import_call_is_resolved_across_files(tmp_path):
+    """The Phase 2 sample repo (payment/service.py + validator.py) uses exactly this pattern."""
+    nested = tmp_path / "payment"
+    nested.mkdir()
+    write(nested, "__init__.py", "")
+    write(nested, "validator.py", "def validate_payment():\n    pass\n")
+    write(
+        nested,
+        "service.py",
+        "from .validator import validate_payment\n\n\nclass PaymentService:\n\n    def process(self):\n        validate_payment()\n",
+    )
+
+    parsed_files = parse_repository(tmp_path)
+    relationships = extract_repository_relationships(tmp_path, parsed_files)
+
+    calls = relationships_of_type(relationships, RelationshipType.CALLS)
+    assert any(
+        r.source == "PaymentService.process"
+        and r.target == "payment.validator.validate_payment"
+        and r.resolved
+        for r in calls
+    )
+
+    imports = relationships_of_type(relationships, RelationshipType.IMPORTS)
+    assert any(
+        r.source == "payment/service.py" and r.target == "payment/validator.py" and r.resolved
+        for r in imports
+    )
+
+
+def test_relative_import_beyond_repository_root_is_unresolved(tmp_path):
+    """`from .. import x` at the repository root has nowhere to go -- must not crash or guess."""
+    path = write(tmp_path, "module.py", "from .. import something\n\n\ndef use():\n    something()\n")
+    parsed = parse_python_file(path)
+    parsed_files = parse_repository(tmp_path)
+    relationships = extract_repository_relationships(tmp_path, parsed_files)
+
+    calls = relationships_of_type(relationships, RelationshipType.CALLS)
+    assert any(r.source == "use" and r.target == "something" and not r.resolved for r in calls)
