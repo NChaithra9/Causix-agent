@@ -15,6 +15,7 @@ class Evidence(BaseModel):
     source: str                      # e.g. "stack_trace", "graph", "git"
     description: str
     location: str | None = None      # e.g. "refund_service.py::RefundService.is_eligible_for_refund"
+    score: float | None = None       # relevance score, set by retrieval (Phase 2)
 
 
 class AnalysisResult(BaseModel):
