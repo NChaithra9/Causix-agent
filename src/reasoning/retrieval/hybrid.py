@@ -34,8 +34,10 @@ def fuse(lists: list[list[Evidence]], top_k: int) -> list[Evidence]:
 
 
 class HybridRetriever:
-    def __init__(self, embedder: Embedder, store: VectorStore, graph: GraphSearch | None = None):
+    def __init__(self, embedder: Embedder, store: VectorStore, graph: GraphSearch | None = None,
+                 min_score: float = 0.15):
         self.embedder, self.store, self.graph = embedder, store, graph
+        self.min_score = min_score  # semantic hits below this are treated as noise
 
     def index(self, chunks: list[CodeChunk]) -> int:
         if chunks:
@@ -44,7 +46,8 @@ class HybridRetriever:
 
     def search(self, query: str, top_k: int = 5) -> list[Evidence]:
         vector = self.embedder.embed([query])[0]
-        return [hit_to_evidence(h) for h in self.store.search(vector, top_k)]
+        hits = [h for h in self.store.search(vector, top_k) if h.score >= self.min_score]
+        return [hit_to_evidence(h) for h in hits]
 
     def retrieve(self, issue: IssueUnderstanding, top_k: int = 5) -> list[Evidence]:
         semantic = self.search(issue_query(issue), top_k)
