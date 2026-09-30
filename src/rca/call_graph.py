@@ -53,6 +53,10 @@ def _traverse(
     for depth in range(1, max_depth + 1):
         if not frontier:
             break
+        # `source`/`target` always mean the real CALLS direction (source
+        # calls target) regardless of which way we're traversing -- only
+        # which side we filter on, and which side becomes the next
+        # frontier, differs between forward and reverse.
         if direction == "forward":
             query = (
                 "MATCH (a)-[:CALLS]->(b) WHERE a.id IN $frontier "
@@ -62,28 +66,30 @@ def _traverse(
         else:
             query = (
                 "MATCH (a)-[:CALLS]->(b) WHERE b.id IN $frontier "
-                "RETURN b.id AS source_id, b.name AS source_name, labels(b)[0] AS source_label, "
-                "a.id AS target_id, a.name AS target_name, labels(a)[0] AS target_label"
+                "RETURN a.id AS source_id, a.name AS source_name, labels(a)[0] AS source_label, "
+                "b.id AS target_id, b.name AS target_name, labels(b)[0] AS target_label"
             )
         rows = connection.execute_read(query, {"frontier": frontier})
 
         next_frontier: list[str] = []
         for row in rows:
-            target_id = row["target_id"]
             edges.append(
                 CallGraphEdge(
                     depth=depth,
                     source_id=row["source_id"],
                     source_name=row["source_name"],
                     source_label=row["source_label"],
-                    target_id=target_id,
+                    target_id=row["target_id"],
                     target_name=row["target_name"],
                     target_label=row["target_label"],
                 )
             )
-            if target_id not in visited:
-                visited.add(target_id)
-                next_frontier.append(target_id)
+            # Forward: keep walking from the callees we just found (target).
+            # Reverse: keep walking from the callers we just found (source).
+            expand_id = row["target_id"] if direction == "forward" else row["source_id"]
+            if expand_id not in visited:
+                visited.add(expand_id)
+                next_frontier.append(expand_id)
         frontier = next_frontier
 
     status = ResolutionStatus.RESOLVED if edges else ResolutionStatus.PARTIALLY_RESOLVED
