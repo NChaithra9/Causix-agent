@@ -15,6 +15,7 @@ from src.api.models import (
     StatusResponse,
 )
 from src.reasoning.agents.issue_agent import IssueAgent
+from src.reasoning.agents.rca_agent import RCAAgent
 from src.reasoning.facts import StubFactsProvider
 from src.reasoning.llm import get_llm
 from src.reasoning.orchestrator import Orchestrator
@@ -37,7 +38,8 @@ def get_retriever() -> HybridRetriever:
 
 
 def get_orchestrator(retriever: HybridRetriever = Depends(get_retriever)) -> Orchestrator:
-    return Orchestrator(IssueAgent(get_llm()), StubFactsProvider(), retriever)
+    llm = get_llm()
+    return Orchestrator(IssueAgent(llm), StubFactsProvider(), retriever, rca_agent=RCAAgent(llm))
 
 
 def run_job(job_id: str, request: AnalyzeRequest, orchestrator: Orchestrator) -> None:

@@ -53,3 +53,8 @@ def test_fuse_respects_top_k():
 def test_empty_index_returns_nothing():
     r = HybridRetriever(HashEmbedder(), InMemoryVectorStore())
     assert r.retrieve(ISSUE) == []
+
+
+def test_noise_below_min_score_is_dropped():
+    # words that appear nowhere in the sample code must not produce "evidence"
+    assert make_retriever().search("placeholder understanding fakellm", top_k=5) == []
