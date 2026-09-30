@@ -1,5 +1,6 @@
 """Runs the agents in order. Each phase adds one step here."""
 from src.api.models import AnalyzeRequest
+from src.reasoning.agents.fix_agent import FixAgent
 from src.reasoning.agents.issue_agent import AgentError, IssueAgent
 from src.reasoning.agents.rca_agent import RCAAgent
 from src.reasoning.facts import FactsProvider
@@ -10,12 +11,13 @@ from src.reasoning.schemas import AnalysisResult
 class Orchestrator:
     def __init__(self, issue_agent: IssueAgent, facts: FactsProvider,
                  retriever: HybridRetriever | None = None, top_k: int = 5,
-                 rca_agent: RCAAgent | None = None) -> None:
+                 rca_agent: RCAAgent | None = None, fix_agent: FixAgent | None = None) -> None:
         self.issue_agent = issue_agent
         self.facts = facts
         self.retriever = retriever
         self.top_k = top_k
         self.rca_agent = rca_agent
+        self.fix_agent = fix_agent
 
     def analyze(self, request: AnalyzeRequest) -> AnalysisResult:
         # Step 1: understand the issue (LLM)
@@ -46,6 +48,15 @@ class Orchestrator:
                 # keep the evidence even if reasoning fails
                 notes.append(f"Root cause analysis failed: {exc}")
 
-        return AnalysisResult(issue=issue, evidence=evidence, notes=notes, rca=rca,
+        # Step 5 (Phase 4): fix recommendation for the located root cause
+        fix = None
+        if self.fix_agent is not None:
+            lookup = self.retriever.get_chunk if self.retriever is not None else (lambda _loc: None)
+            try:
+                fix = self.fix_agent.run(issue, rca, lookup)
+            except AgentError as exc:
+                notes.append(f"Fix recommendation failed: {exc}")
+
+        return AnalysisResult(issue=issue, evidence=evidence, notes=notes, rca=rca, fix=fix,
                               root_cause=None if rca is None or rca.insufficient_evidence
                               else rca.root_cause)

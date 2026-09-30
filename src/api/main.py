@@ -14,6 +14,7 @@ from src.api.models import (
     SearchRequest,
     StatusResponse,
 )
+from src.reasoning.agents.fix_agent import FixAgent
 from src.reasoning.agents.issue_agent import IssueAgent
 from src.reasoning.agents.rca_agent import RCAAgent
 from src.reasoning.facts import StubFactsProvider
@@ -39,7 +40,8 @@ def get_retriever() -> HybridRetriever:
 
 def get_orchestrator(retriever: HybridRetriever = Depends(get_retriever)) -> Orchestrator:
     llm = get_llm()
-    return Orchestrator(IssueAgent(llm), StubFactsProvider(), retriever, rca_agent=RCAAgent(llm))
+    return Orchestrator(IssueAgent(llm), StubFactsProvider(), retriever, rca_agent=RCAAgent(llm),
+                        fix_agent=FixAgent(llm))
 
 
 def run_job(job_id: str, request: AnalyzeRequest, orchestrator: Orchestrator) -> None:

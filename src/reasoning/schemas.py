@@ -31,9 +31,32 @@ class RootCauseAnalysis(BaseModel):
     warnings: list[str] = Field(default_factory=list)   # what the grounding checks corrected
 
 
+class RegressionTest(BaseModel):
+    name: str
+    code: str
+
+
+class FixRecommendation(BaseModel):
+    """Output of the Fix Agent (Phase 4). A recommendation only: Causix never edits code itself."""
+    status: str                                   # "recommended" | "skipped"
+    reason: str | None = None                     # why it was skipped
+    location: str | None = None
+    file: str | None = None
+    summary: str | None = None
+    explanation: str | None = None
+    code_before: str | None = None
+    code_after: str | None = None
+    diff: str | None = None                       # unified diff, computed by Causix (not the LLM)
+    regression_test: RegressionTest | None = None
+    risks: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    applied: bool = False                         # always False: human review first
+
+
 class AnalysisResult(BaseModel):
     issue: IssueUnderstanding
     evidence: list[Evidence] = Field(default_factory=list)
     root_cause: str | None = None    # filled in Phase 3 (RCA agent)
     rca: RootCauseAnalysis | None = None
+    fix: FixRecommendation | None = None
     notes: list[str] = Field(default_factory=list)

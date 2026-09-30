@@ -15,6 +15,7 @@ class CodeChunk(BaseModel):
     start_line: int
     end_line: int
     text: str
+    col_offset: int = 0   # indentation of the first line in the original file (Phase 4)
 
     @property
     def location(self) -> str:
@@ -25,6 +26,7 @@ def _make(rel: str, name: str, kind: str, node: ast.AST, source: str) -> CodeChu
     return CodeChunk(
         id=f"{rel}::{name}", file=rel, name=name, kind=kind,
         start_line=node.lineno, end_line=node.end_lineno or node.lineno,
+        col_offset=getattr(node, "col_offset", 0),
         text=ast.get_source_segment(source, node) or "",
     )
 

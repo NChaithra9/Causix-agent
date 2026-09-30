@@ -44,6 +44,11 @@ class FakeLLM:
         "insufficient_evidence": True,
     })
 
+    DEFAULT_FIX_RESPONSE = json.dumps({
+        "summary": "FakeLLM cannot propose a fix; configure CAUSIX_LLM_PROVIDER.",
+        "explanation": "", "code_after": None, "test_name": None, "test_code": None, "risks": [],
+    })
+
     def __init__(self, response: str | None = None, responses: list[str] | None = None) -> None:
         self.response = response
         self.responses = list(responses or [])
@@ -55,6 +60,8 @@ class FakeLLM:
             return self.responses.pop(0)
         if self.response is not None:
             return self.response
+        if "Fix Agent" in system:
+            return self.DEFAULT_FIX_RESPONSE
         return self.DEFAULT_RCA_RESPONSE if "Root Cause Agent" in system else self.DEFAULT_RESPONSE
 
 
