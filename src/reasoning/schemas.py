@@ -18,8 +18,22 @@ class Evidence(BaseModel):
     score: float | None = None       # relevance score, set by retrieval (Phase 2)
 
 
+class RootCauseAnalysis(BaseModel):
+    """Output of the RCA Agent (Phase 3). Always grounded in the evidence it was given."""
+    root_cause: str
+    confidence: str = "low"                       # "low" | "medium" | "high"
+    affected_component: str | None = None
+    location: str | None = None                   # must be one of the evidence locations
+    reasoning: str = ""
+    suggested_fix: str | None = None
+    insufficient_evidence: bool = False
+    supporting_evidence: list[Evidence] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)   # what the grounding checks corrected
+
+
 class AnalysisResult(BaseModel):
     issue: IssueUnderstanding
     evidence: list[Evidence] = Field(default_factory=list)
     root_cause: str | None = None    # filled in Phase 3 (RCA agent)
+    rca: RootCauseAnalysis | None = None
     notes: list[str] = Field(default_factory=list)

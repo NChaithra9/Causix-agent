@@ -24,7 +24,7 @@ def tokenize(text: str) -> list[str]:
 class HashEmbedder:
     """Bag-of-words hashed into a fixed-size vector. Deterministic and fast; good for dev/tests."""
 
-    def __init__(self, dim: int = 256) -> None:
+    def __init__(self, dim: int = 1024) -> None:  # 1024 keeps hash collisions (noise) rare
         self.dim = dim
 
     def _bucket(self, token: str) -> int:

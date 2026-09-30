@@ -14,3 +14,43 @@ def build_issue_prompt(issue: str, stack_trace: str | None, logs: str | None) ->
     if logs:
         parts.append(f"Logs:\n{logs}")
     return "\n\n".join(parts)
+
+
+RCA_SYSTEM = """You are the Root Cause Agent of Causix.
+You receive an issue and a numbered list of EVIDENCE (E1, E2, ...) collected by deterministic
+analysis and code retrieval. Reason ONLY over that evidence. Never invent files, methods,
+commits or behaviour that the evidence does not show.
+
+Return ONLY a JSON object with these keys:
+  "root_cause"           - one or two sentences: the most likely cause
+  "confidence"           - "low", "medium" or "high"
+  "affected_component"   - service/class/module most affected, or null
+  "location"             - the exact location string of the evidence item where the fix belongs, or null
+  "evidence_ids"         - list of evidence ids that support the conclusion, e.g. ["E1", "E3"]
+  "reasoning"            - short explanation linking the evidence to the root cause
+  "suggested_fix"        - a short description of the change to make, or null
+  "insufficient_evidence"- true if the evidence is not enough to name a root cause
+If the evidence does not support a conclusion, set insufficient_evidence to true and
+confidence to "low" rather than guessing. Do not add any text outside the JSON."""
+
+
+def format_evidence(evidence) -> str:
+    lines = []
+    for i, ev in enumerate(evidence, start=1):
+        where = f" @ {ev.location}" if ev.location else ""
+        lines.append(f"E{i} [{ev.source}]{where}: {ev.description}")
+    return "\n".join(lines)
+
+
+def build_rca_prompt(issue, evidence, stack_trace: str | None, logs: str | None) -> str:
+    parts = [
+        f"Issue summary: {issue.summary}",
+        f"Error type: {issue.error_type or 'unknown'}",
+        f"Suspected component: {issue.suspected_component or 'unknown'}",
+    ]
+    if stack_trace:
+        parts.append(f"Stack trace:\n{stack_trace}")
+    if logs:
+        parts.append(f"Logs:\n{logs}")
+    parts.append(f"EVIDENCE:\n{format_evidence(evidence)}")
+    return "\n\n".join(parts)
