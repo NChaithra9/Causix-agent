@@ -15,9 +15,11 @@ from src.api.models import (
     StatusResponse,
 )
 from src.reasoning.agents.fix_agent import FixAgent
+from src.reasoning.agents.impact_agent import ImpactAgent
 from src.reasoning.agents.issue_agent import IssueAgent
 from src.reasoning.agents.rca_agent import RCAAgent
 from src.reasoning.facts import StubFactsProvider
+from src.reasoning.impact import CodeCallGraph
 from src.reasoning.llm import get_llm
 from src.reasoning.orchestrator import Orchestrator
 from src.reasoning.retrieval.chunker import chunk_repository
@@ -34,14 +36,23 @@ _embedder = get_embedder()
 _retriever = HybridRetriever(_embedder, get_vector_store(_embedder.dim), StubGraphSearch())
 
 
+_impact_provider = CodeCallGraph()   # interim; swap for Person 1's graph impact engine
+
+
 def get_retriever() -> HybridRetriever:
     return _retriever
 
 
-def get_orchestrator(retriever: HybridRetriever = Depends(get_retriever)) -> Orchestrator:
+def get_impact_provider() -> CodeCallGraph:
+    return _impact_provider
+
+
+def get_orchestrator(retriever: HybridRetriever = Depends(get_retriever),
+                     impact_provider: CodeCallGraph = Depends(get_impact_provider)) -> Orchestrator:
     llm = get_llm()
     return Orchestrator(IssueAgent(llm), StubFactsProvider(), retriever, rca_agent=RCAAgent(llm),
-                        fix_agent=FixAgent(llm))
+                        fix_agent=FixAgent(llm), impact_agent=ImpactAgent(llm),
+                        impact_provider=impact_provider)
 
 
 def run_job(job_id: str, request: AnalyzeRequest, orchestrator: Orchestrator) -> None:
@@ -94,11 +105,14 @@ def result(job_id: str) -> AnalysisResult:
 
 @app.post("/api/causix/index", response_model=IndexResponse)
 def index_repository(request: IndexRequest,
-                     retriever: HybridRetriever = Depends(get_retriever)) -> IndexResponse:
+                     retriever: HybridRetriever = Depends(get_retriever),
+                     impact_provider: CodeCallGraph = Depends(get_impact_provider)) -> IndexResponse:
     root = Path(request.repo_path).expanduser()
     if not root.is_dir():
         raise HTTPException(status_code=400, detail=f"Not a directory: {request.repo_path}")
-    indexed = retriever.index(chunk_repository(root))
+    chunks = chunk_repository(root)
+    impact_provider.load(chunks)
+    indexed = retriever.index(chunks)
     return IndexResponse(chunks_indexed=indexed, total_chunks=retriever.store.count())
 
 

@@ -80,3 +80,27 @@ def build_fix_prompt(issue, rca, location: str, code: str) -> str:
         f"Location: {location}",
         f"Current code:\n{code}",
     ])
+
+
+IMPACT_SYSTEM = """You are the Impact Agent of Causix.
+A code change is planned at CHANGED. You receive the list of AFFECTED items that a
+deterministic impact analysis found (N1, N2, ...), each with its kind, depth (1 = direct)
+and relation. Explain the impact for an engineer. Use ONLY the listed items; never add
+services, APIs or tests that are not listed.
+
+Return ONLY a JSON object with these keys:
+  "summary"    - two or three sentences on what this change could affect
+  "risk_level" - "low", "medium" or "high"
+  "reasons"    - object mapping item ids (e.g. "N1") to one short sentence on why it is affected
+Do not add any text outside the JSON."""
+
+
+def build_impact_prompt(changed: str, fix_summary: str | None, nodes) -> str:
+    lines = [f"N{i} [{n.kind}, depth {n.depth}, {n.relation}] {n.name}"
+             + (f" @ {n.location}" if n.location else "")
+             for i, n in enumerate(nodes, start=1)]
+    return "\n\n".join([
+        f"CHANGED: {changed}",
+        f"Planned change: {fix_summary or 'n/a'}",
+        "AFFECTED:\n" + "\n".join(lines),
+    ])

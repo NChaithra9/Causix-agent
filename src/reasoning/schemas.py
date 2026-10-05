@@ -53,10 +53,32 @@ class FixRecommendation(BaseModel):
     applied: bool = False                         # always False: human review first
 
 
+class ImpactItem(BaseModel):
+    name: str
+    kind: str
+    location: str | None = None
+    depth: int = 1
+    reason: str = ""
+
+
+class ImpactExplanation(BaseModel):
+    """Output of the Impact Agent (Phase 5). Groups come from the impact graph, never the LLM."""
+    status: str                                   # "explained" | "skipped"
+    reason: str | None = None
+    changed_location: str | None = None
+    risk_level: str = "low"                       # "low" | "medium" | "high"
+    summary: str = ""
+    directly_affected: list[ImpactItem] = Field(default_factory=list)
+    potentially_affected: list[ImpactItem] = Field(default_factory=list)
+    tests_to_run: list[ImpactItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class AnalysisResult(BaseModel):
     issue: IssueUnderstanding
     evidence: list[Evidence] = Field(default_factory=list)
     root_cause: str | None = None    # filled in Phase 3 (RCA agent)
     rca: RootCauseAnalysis | None = None
     fix: FixRecommendation | None = None
+    impact: ImpactExplanation | None = None
     notes: list[str] = Field(default_factory=list)

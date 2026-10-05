@@ -49,6 +49,11 @@ class FakeLLM:
         "explanation": "", "code_after": None, "test_name": None, "test_code": None, "risks": [],
     })
 
+    DEFAULT_IMPACT_RESPONSE = json.dumps({
+        "summary": "FakeLLM cannot explain impact; configure CAUSIX_LLM_PROVIDER.",
+        "risk_level": "low", "reasons": {},
+    })
+
     def __init__(self, response: str | None = None, responses: list[str] | None = None) -> None:
         self.response = response
         self.responses = list(responses or [])
@@ -60,6 +65,8 @@ class FakeLLM:
             return self.responses.pop(0)
         if self.response is not None:
             return self.response
+        if "Impact Agent" in system:
+            return self.DEFAULT_IMPACT_RESPONSE
         if "Fix Agent" in system:
             return self.DEFAULT_FIX_RESPONSE
         return self.DEFAULT_RCA_RESPONSE if "Root Cause Agent" in system else self.DEFAULT_RESPONSE

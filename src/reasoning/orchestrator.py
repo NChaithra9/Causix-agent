@@ -1,9 +1,12 @@
 """Runs the agents in order. Each phase adds one step here."""
 from src.api.models import AnalyzeRequest
 from src.reasoning.agents.fix_agent import FixAgent
+from src.reasoning.agents.impact_agent import ImpactAgent
+from src.reasoning.agents.impact_agent import skipped as skip_impact
 from src.reasoning.agents.issue_agent import AgentError, IssueAgent
 from src.reasoning.agents.rca_agent import RCAAgent
 from src.reasoning.facts import FactsProvider
+from src.reasoning.impact import ImpactProvider
 from src.reasoning.retrieval.hybrid import HybridRetriever
 from src.reasoning.schemas import AnalysisResult
 
@@ -11,13 +14,17 @@ from src.reasoning.schemas import AnalysisResult
 class Orchestrator:
     def __init__(self, issue_agent: IssueAgent, facts: FactsProvider,
                  retriever: HybridRetriever | None = None, top_k: int = 5,
-                 rca_agent: RCAAgent | None = None, fix_agent: FixAgent | None = None) -> None:
+                 rca_agent: RCAAgent | None = None, fix_agent: FixAgent | None = None,
+                 impact_agent: ImpactAgent | None = None,
+                 impact_provider: ImpactProvider | None = None) -> None:
         self.issue_agent = issue_agent
         self.facts = facts
         self.retriever = retriever
         self.top_k = top_k
         self.rca_agent = rca_agent
         self.fix_agent = fix_agent
+        self.impact_agent = impact_agent
+        self.impact_provider = impact_provider
 
     def analyze(self, request: AnalyzeRequest) -> AnalysisResult:
         # Step 1: understand the issue (LLM)
@@ -57,6 +64,18 @@ class Orchestrator:
             except AgentError as exc:
                 notes.append(f"Fix recommendation failed: {exc}")
 
+        # Step 6 (Phase 5): explain the impact of the recommended change
+        impact = None
+        if self.impact_agent is not None and self.impact_provider is not None:
+            try:
+                if fix is not None and fix.status == "recommended" and fix.location:
+                    impact = self.impact_agent.run(fix, self.impact_provider.impact_of(fix.location))
+                else:
+                    impact = skip_impact("No recommended fix, so there is no planned change to assess.")
+            except AgentError as exc:
+                notes.append(f"Impact explanation failed: {exc}")
+
         return AnalysisResult(issue=issue, evidence=evidence, notes=notes, rca=rca, fix=fix,
+                              impact=impact,
                               root_cause=None if rca is None or rca.insufficient_evidence
                               else rca.root_cause)
