@@ -44,6 +44,10 @@ class HybridRetriever:
             self.store.add(chunks, self.embedder.embed([f"{c.name}\n{c.text}" for c in chunks]))
         return len(chunks)
 
+    def get_chunk(self, location: str) -> CodeChunk | None:
+        """Source code for an evidence location, if it has been indexed (used by the Fix Agent)."""
+        return self.store.get(location)
+
     def search(self, query: str, top_k: int = 5) -> list[Evidence]:
         vector = self.embedder.embed([query])[0]
         hits = [h for h in self.store.search(vector, top_k) if h.score >= self.min_score]

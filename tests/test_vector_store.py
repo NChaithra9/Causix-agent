@@ -34,6 +34,9 @@ class FakeMilvus:
         return [[{"id": r["id"], "distance": 0.9, "entity": {k: r[k] for k in output_fields}}
                  for r in self.rows[:limit]]]
 
+    def get(self, collection_name, ids, output_fields):
+        return [{"id": r["id"], **{k: r[k] for k in output_fields}} for r in self.rows if r["id"] in ids]
+
     def get_collection_stats(self, collection_name):
         return {"row_count": len(self.rows)}
 
@@ -47,3 +50,12 @@ def test_milvus_store_round_trip_with_fake_client():
     assert hits[0].chunk.location == "a.py::x"
     assert hits[0].score == 0.9
     assert store.count() == 1
+    assert store.get("a.py::x").name == "x"
+    assert store.get("a.py::nope") is None
+
+
+def test_in_memory_get_by_id():
+    store = InMemoryVectorStore()
+    store.add([chunk("x")], [[1.0, 0.0]])
+    assert store.get("a.py::x").name == "x"
+    assert store.get("a.py::missing") is None
