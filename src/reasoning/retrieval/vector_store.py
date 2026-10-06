@@ -17,6 +17,7 @@ class VectorStore(Protocol):
     def add(self, chunks: list[CodeChunk], vectors: list[list[float]]) -> None: ...
     def search(self, vector: list[float], top_k: int) -> list[SearchHit]: ...
     def count(self) -> int: ...
+    def get(self, chunk_id: str) -> CodeChunk | None: ...
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -40,6 +41,10 @@ class InMemoryVectorStore:
 
     def count(self) -> int:
         return len(self._items)
+
+    def get(self, chunk_id: str) -> CodeChunk | None:
+        item = self._items.get(chunk_id)
+        return item[0] if item else None
 
 
 class MilvusVectorStore:
@@ -77,6 +82,13 @@ class MilvusVectorStore:
     def count(self) -> int:
         stats = self.client.get_collection_stats(collection_name=self.collection)
         return int(stats.get("row_count", 0))
+
+    def get(self, chunk_id: str) -> CodeChunk | None:
+        rows = self.client.get(collection_name=self.collection, ids=[chunk_id],
+                               output_fields=self.FIELDS)
+        if not rows:
+            return None
+        return CodeChunk(id=rows[0]["id"], **{k: rows[0][k] for k in self.FIELDS})
 
 
 def get_vector_store(dim: int) -> VectorStore:
