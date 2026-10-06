@@ -11,6 +11,8 @@ class AnalyzeRequest(BaseModel):
     repository: str | None = None
     stack_trace: str | None = None
     logs: str | None = None
+    previous_revision: str | None = None   # optional: compare architecture between two revisions
+    current_revision: str | None = None
 
 
 class JobState(str, Enum):
@@ -45,6 +47,7 @@ class IndexRequest(BaseModel):
 class IndexResponse(BaseModel):
     chunks_indexed: int
     total_chunks: int
+    graph_ingested: bool | None = None   # True when loaded into Neo4j (real engines)
 
 
 class SearchRequest(BaseModel):

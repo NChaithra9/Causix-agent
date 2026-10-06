@@ -24,7 +24,8 @@ class Orchestrator:
                  impact_provider: ImpactProvider | None = None,
                  scenario_agent: ScenarioAgent | None = None,
                  scenario_runner: ScenarioRunner | None = None,
-                 documentation_agent: DocumentationAgent | None = None) -> None:
+                 documentation_agent: DocumentationAgent | None = None,
+                 architecture_provider=None) -> None:
         self.issue_agent = issue_agent
         self.facts = facts
         self.retriever = retriever
@@ -36,6 +37,7 @@ class Orchestrator:
         self.scenario_agent = scenario_agent
         self.scenario_runner = scenario_runner
         self.documentation_agent = documentation_agent
+        self.architecture_provider = architecture_provider
 
     def analyze(self, request: AnalyzeRequest) -> AnalysisResult:
         # Step 1: understand the issue (LLM)
@@ -106,7 +108,15 @@ class Orchestrator:
                               root_cause=None if rca is None or rca.insufficient_evidence
                               else rca.root_cause)
 
-        # Step 8 (Phase 7): incident report written from everything above
+        # Step 8 (Phase 8): architecture changes between two revisions (Person 1's Phase 7 engine)
+        if self.architecture_provider is not None and request.previous_revision and request.current_revision:
+            try:
+                result.architecture = self.architecture_provider.compare(
+                    request.repository, request.previous_revision, request.current_revision)
+            except Exception as exc:  # engine problems must not lose the analysis
+                result.notes.append(f"Architecture comparison failed: {exc}")
+
+        # Step 9 (Phase 7): incident report written from everything above
         if self.documentation_agent is not None:
             try:
                 result.documentation = self.documentation_agent.run(result)

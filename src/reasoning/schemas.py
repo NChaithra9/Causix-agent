@@ -110,6 +110,28 @@ class DocumentationReport(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+ARCHITECTURE_CAVEATS = ["Events and database access come only from a root rootfix-architecture.json, not from code.",
+                        "One service per repository is assumed."]
+
+
+class ArchitectureChangeItem(BaseModel):
+    change_type: str
+    category: str
+    name: str
+    detail: str = ""
+
+
+class ArchitectureSummary(BaseModel):
+    """Phase 8: architecture changes between two revisions, from Person 1's Phase 7 engine."""
+    status: str                       # NO_CHANGES | CHANGES_DETECTED | UNRESOLVED | SKIPPED
+    previous_revision: str | None = None
+    current_revision: str | None = None
+    summary: str = ""
+    changes: list[ArchitectureChangeItem] = Field(default_factory=list)
+    unresolved: list[str] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=lambda: list(ARCHITECTURE_CAVEATS))
+
+
 class AnalysisResult(BaseModel):
     issue: IssueUnderstanding
     evidence: list[Evidence] = Field(default_factory=list)
@@ -119,4 +141,5 @@ class AnalysisResult(BaseModel):
     impact: ImpactExplanation | None = None
     scenario: TestScenario | None = None
     documentation: DocumentationReport | None = None
+    architecture: ArchitectureSummary | None = None
     notes: list[str] = Field(default_factory=list)
