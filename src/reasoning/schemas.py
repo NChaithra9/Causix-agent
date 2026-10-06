@@ -74,6 +74,30 @@ class ImpactExplanation(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ExecutionResult(BaseModel):
+    """Outcome of running a scenario in Person 1's sandbox. Only the runner sets this, never the LLM."""
+    status: str                                   # "passed" | "failed" | "error" | "not_run"
+    details: str = ""
+    duration_ms: int | None = None
+
+
+class TestScenario(BaseModel):
+    """Output of the Scenario Agent (Phase 6): setup -> action -> expected, in business terms."""
+    __test__ = False                              # not a pytest class
+    status: str                                   # "generated" | "skipped"
+    reason: str | None = None
+    id: str | None = None
+    title: str = ""
+    setup: list[str] = Field(default_factory=list)
+    action: str = ""
+    expected: str = ""
+    expected_error_code: str | None = None
+    related_location: str | None = None
+    regression_test: str | None = None            # name of the fix's regression test, if any
+    execution: ExecutionResult | None = None      # filled by the sandbox runner (PASS/FAIL source)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class AnalysisResult(BaseModel):
     issue: IssueUnderstanding
     evidence: list[Evidence] = Field(default_factory=list)
@@ -81,4 +105,5 @@ class AnalysisResult(BaseModel):
     rca: RootCauseAnalysis | None = None
     fix: FixRecommendation | None = None
     impact: ImpactExplanation | None = None
+    scenario: TestScenario | None = None
     notes: list[str] = Field(default_factory=list)

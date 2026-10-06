@@ -16,6 +16,8 @@ from src.api.models import (
 )
 from src.reasoning.agents.fix_agent import FixAgent
 from src.reasoning.agents.impact_agent import ImpactAgent
+from src.reasoning.agents.scenario_agent import ScenarioAgent
+from src.reasoning.execution import StubScenarioRunner
 from src.reasoning.agents.issue_agent import IssueAgent
 from src.reasoning.agents.rca_agent import RCAAgent
 from src.reasoning.facts import StubFactsProvider
@@ -52,7 +54,8 @@ def get_orchestrator(retriever: HybridRetriever = Depends(get_retriever),
     llm = get_llm()
     return Orchestrator(IssueAgent(llm), StubFactsProvider(), retriever, rca_agent=RCAAgent(llm),
                         fix_agent=FixAgent(llm), impact_agent=ImpactAgent(llm),
-                        impact_provider=impact_provider)
+                        impact_provider=impact_provider, scenario_agent=ScenarioAgent(llm),
+                        scenario_runner=StubScenarioRunner())
 
 
 def run_job(job_id: str, request: AnalyzeRequest, orchestrator: Orchestrator) -> None:

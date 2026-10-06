@@ -5,10 +5,13 @@ from src.reasoning.agents.impact_agent import ImpactAgent
 from src.reasoning.agents.impact_agent import skipped as skip_impact
 from src.reasoning.agents.issue_agent import AgentError, IssueAgent
 from src.reasoning.agents.rca_agent import RCAAgent
+from src.reasoning.agents.scenario_agent import ScenarioAgent
+from src.reasoning.agents.scenario_agent import skipped as skip_scenario
+from src.reasoning.execution import ScenarioRunner
 from src.reasoning.facts import FactsProvider
 from src.reasoning.impact import ImpactProvider
 from src.reasoning.retrieval.hybrid import HybridRetriever
-from src.reasoning.schemas import AnalysisResult
+from src.reasoning.schemas import AnalysisResult, ExecutionResult
 
 
 class Orchestrator:
@@ -16,7 +19,9 @@ class Orchestrator:
                  retriever: HybridRetriever | None = None, top_k: int = 5,
                  rca_agent: RCAAgent | None = None, fix_agent: FixAgent | None = None,
                  impact_agent: ImpactAgent | None = None,
-                 impact_provider: ImpactProvider | None = None) -> None:
+                 impact_provider: ImpactProvider | None = None,
+                 scenario_agent: ScenarioAgent | None = None,
+                 scenario_runner: ScenarioRunner | None = None) -> None:
         self.issue_agent = issue_agent
         self.facts = facts
         self.retriever = retriever
@@ -25,6 +30,8 @@ class Orchestrator:
         self.fix_agent = fix_agent
         self.impact_agent = impact_agent
         self.impact_provider = impact_provider
+        self.scenario_agent = scenario_agent
+        self.scenario_runner = scenario_runner
 
     def analyze(self, request: AnalyzeRequest) -> AnalysisResult:
         # Step 1: understand the issue (LLM)
@@ -75,7 +82,22 @@ class Orchestrator:
             except AgentError as exc:
                 notes.append(f"Impact explanation failed: {exc}")
 
+        # Step 7 (Phase 6): business test scenario; PASS/FAIL comes only from the sandbox runner
+        scenario = None
+        if self.scenario_agent is not None:
+            try:
+                scenario = self.scenario_agent.run(issue, rca, fix)
+                if scenario.status == "generated" and self.scenario_runner is not None:
+                    try:
+                        scenario.execution = self.scenario_runner.run(scenario, fix)
+                    except Exception as exc:  # sandbox failure must not lose the scenario
+                        notes.append(f"Scenario execution failed: {exc}")
+                        scenario.execution = ExecutionResult(status="error", details=str(exc))
+            except AgentError as exc:
+                notes.append(f"Scenario generation failed: {exc}")
+                scenario = skip_scenario("Scenario generation failed.")
+
         return AnalysisResult(issue=issue, evidence=evidence, notes=notes, rca=rca, fix=fix,
-                              impact=impact,
+                              impact=impact, scenario=scenario,
                               root_cause=None if rca is None or rca.insufficient_evidence
                               else rca.root_cause)
