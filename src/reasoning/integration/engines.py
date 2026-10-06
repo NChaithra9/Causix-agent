@@ -57,8 +57,18 @@ def _connect():
     return conn
 
 
+def _load_env() -> None:
+    """Read .env (if python-dotenv is installed) so NEO4J_* are visible before the auto check."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:  # pragma: no cover
+        pass
+
+
 def build_engines(context: RepoContext, locations: LocationIndex, stub_runner,
                   mode: str | None = None, connect=_connect) -> Engines:
+    _load_env()
     mode = (mode or os.getenv("CAUSIX_ENGINES", "auto")).lower()
     arch = GitArchitectureProvider(context.get)
     stub = Engines("stub", StubFactsProvider(), None, stub_runner, arch)
