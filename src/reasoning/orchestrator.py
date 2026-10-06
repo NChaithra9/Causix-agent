@@ -1,5 +1,7 @@
 """Runs the agents in order. Each phase adds one step here."""
 from src.api.models import AnalyzeRequest
+from src.reasoning.agents.documentation_agent import DocumentationAgent
+from src.reasoning.agents.documentation_agent import skipped as skip_docs
 from src.reasoning.agents.fix_agent import FixAgent
 from src.reasoning.agents.impact_agent import ImpactAgent
 from src.reasoning.agents.impact_agent import skipped as skip_impact
@@ -21,7 +23,8 @@ class Orchestrator:
                  impact_agent: ImpactAgent | None = None,
                  impact_provider: ImpactProvider | None = None,
                  scenario_agent: ScenarioAgent | None = None,
-                 scenario_runner: ScenarioRunner | None = None) -> None:
+                 scenario_runner: ScenarioRunner | None = None,
+                 documentation_agent: DocumentationAgent | None = None) -> None:
         self.issue_agent = issue_agent
         self.facts = facts
         self.retriever = retriever
@@ -32,6 +35,7 @@ class Orchestrator:
         self.impact_provider = impact_provider
         self.scenario_agent = scenario_agent
         self.scenario_runner = scenario_runner
+        self.documentation_agent = documentation_agent
 
     def analyze(self, request: AnalyzeRequest) -> AnalysisResult:
         # Step 1: understand the issue (LLM)
@@ -97,7 +101,16 @@ class Orchestrator:
                 notes.append(f"Scenario generation failed: {exc}")
                 scenario = skip_scenario("Scenario generation failed.")
 
-        return AnalysisResult(issue=issue, evidence=evidence, notes=notes, rca=rca, fix=fix,
+        result = AnalysisResult(issue=issue, evidence=evidence, notes=notes, rca=rca, fix=fix,
                               impact=impact, scenario=scenario,
                               root_cause=None if rca is None or rca.insufficient_evidence
                               else rca.root_cause)
+
+        # Step 8 (Phase 7): incident report written from everything above
+        if self.documentation_agent is not None:
+            try:
+                result.documentation = self.documentation_agent.run(result)
+            except AgentError as exc:
+                result.notes.append(f"Documentation failed: {exc}")
+                result.documentation = skip_docs("Documentation generation failed.")
+        return result

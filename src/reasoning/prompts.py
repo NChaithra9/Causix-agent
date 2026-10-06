@@ -129,3 +129,26 @@ def build_scenario_prompt(issue, rca, fix) -> str:
         f"FIXED CODE:\n{fix.code_after or 'n/a'}",
         f"REGRESSION TEST: {fix.regression_test.name if fix.regression_test else 'none'}",
     ])
+
+
+DOCS_SYSTEM = """You are the Documentation Agent of Causix.
+You receive a finished root-cause analysis. Write the human-readable framing of the incident
+report. Use ONLY the facts provided; never invent causes, files, tests or results, and never
+claim a test passed (execution results are shown separately).
+
+Return ONLY a JSON object with these keys:
+  "title"   - short incident title
+  "summary" - two or three sentences: what broke, why, and the recommended fix
+  "lessons" - list of up to 3 short prevention lessons grounded in the facts
+Do not add any text outside the JSON."""
+
+
+def build_docs_prompt(result) -> str:
+    rca, fix, impact, sc = result.rca, result.fix, result.impact, result.scenario
+    parts = [f"ISSUE: {result.issue.summary}",
+             f"ROOT CAUSE: {rca.root_cause if rca else 'n/a'} (confidence: {rca.confidence if rca else 'n/a'})",
+             f"LOCATION: {rca.location if rca else 'n/a'}",
+             f"FIX: {fix.summary if fix and fix.status == 'recommended' else 'none recommended'}",
+             f"IMPACT: {impact.summary if impact and impact.status == 'explained' else 'n/a'}",
+             f"SCENARIO: {sc.title if sc and sc.status == 'generated' else 'n/a'}"]
+    return "\n\n".join(parts)
