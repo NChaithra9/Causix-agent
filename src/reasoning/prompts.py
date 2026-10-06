@@ -104,3 +104,28 @@ def build_impact_prompt(changed: str, fix_summary: str | None, nodes) -> str:
         f"Planned change: {fix_summary or 'n/a'}",
         "AFFECTED:\n" + "\n".join(lines),
     ])
+
+
+SCENARIO_SYSTEM = """You are the Scenario Agent of Causix.
+Write ONE business-level test scenario that proves the recommended fix works. A sandbox
+will run it later; you never decide whether it passes. Use ONLY facts from the issue,
+root cause and fix provided; do not invent services, tables or error codes.
+
+Return ONLY a JSON object with these keys:
+  "title"               - short scenario name
+  "setup"               - list of short strings: the preconditions (data/state to create)
+  "action"              - one sentence: what the user or system does
+  "expected"            - one sentence: the correct outcome after the fix
+  "expected_error_code" - error code or status the code returns, or null
+Do not add any text outside the JSON."""
+
+
+def build_scenario_prompt(issue, rca, fix) -> str:
+    return "\n\n".join([
+        f"ISSUE: {issue.summary}",
+        f"ROOT CAUSE: {rca.root_cause if rca else 'n/a'}",
+        f"LOCATION: {fix.location}",
+        f"FIX SUMMARY: {fix.summary or 'n/a'}",
+        f"FIXED CODE:\n{fix.code_after or 'n/a'}",
+        f"REGRESSION TEST: {fix.regression_test.name if fix.regression_test else 'none'}",
+    ])
