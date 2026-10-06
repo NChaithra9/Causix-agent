@@ -7,6 +7,15 @@ from datetime import datetime
 
 
 @dataclass
+class FileChange:
+    """One file's status between two revisions, straight from ``git diff``."""
+
+    path: str
+    status: str  # "A" added, "M" modified, "D" deleted, "R" renamed
+    old_path: str | None = None  # set for renames
+
+
+@dataclass
 class CommitInfo:
     """One commit, with the deterministic facts needed for engineering intelligence.
 
