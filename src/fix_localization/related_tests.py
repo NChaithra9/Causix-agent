@@ -17,7 +17,7 @@ from src.graph.connection import Neo4jConnection
 
 from .models import RelatedTest
 
-__all__ = ["find_related_tests"]
+__all__ = ["find_related_tests", "is_test_path"]
 
 _TEST_FILE_RE = re.compile(r"(^|/)(test_[^/]+\.py|[^/]+_test\.py)$")
 _TEST_DIR_RE = re.compile(r"(^|/)tests?/")
@@ -25,6 +25,12 @@ _TEST_DIR_RE = re.compile(r"(^|/)tests?/")
 
 def _looks_like_test_file(path: str) -> bool:
     return bool(_TEST_FILE_RE.search(path)) or bool(_TEST_DIR_RE.search(path))
+
+
+def is_test_path(path: str) -> bool:
+    """Whether ``path`` follows the repository-structure convention for a test
+    file (public so Phase 5's impact analysis applies the identical rule)."""
+    return _looks_like_test_file(path)
 
 
 def find_related_tests(connection: Neo4jConnection, repository_id: str | None, target_name: str | None) -> list[RelatedTest]:
