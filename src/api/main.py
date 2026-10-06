@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 
 from src.api.jobs import JobStore
 from src.api.models import (
@@ -14,6 +14,7 @@ from src.api.models import (
     SearchRequest,
     StatusResponse,
 )
+from src.reasoning.agents.documentation_agent import DocumentationAgent
 from src.reasoning.agents.fix_agent import FixAgent
 from src.reasoning.agents.impact_agent import ImpactAgent
 from src.reasoning.agents.scenario_agent import ScenarioAgent
@@ -55,7 +56,8 @@ def get_orchestrator(retriever: HybridRetriever = Depends(get_retriever),
     return Orchestrator(IssueAgent(llm), StubFactsProvider(), retriever, rca_agent=RCAAgent(llm),
                         fix_agent=FixAgent(llm), impact_agent=ImpactAgent(llm),
                         impact_provider=impact_provider, scenario_agent=ScenarioAgent(llm),
-                        scenario_runner=StubScenarioRunner())
+                        scenario_runner=StubScenarioRunner(),
+                        documentation_agent=DocumentationAgent(llm))
 
 
 def run_job(job_id: str, request: AnalyzeRequest, orchestrator: Orchestrator) -> None:
@@ -104,6 +106,18 @@ def result(job_id: str) -> AnalysisResult:
     if job.state != JobState.COMPLETED:
         raise HTTPException(status_code=409, detail=f"Job is {job.state.value}, result not ready")
     return job.result
+
+
+@app.get("/api/causix/report/{job_id}", response_class=PlainTextResponse)
+def report(job_id: str) -> str:
+    """The incident report as Markdown (Phase 7)."""
+    job = _get_job_or_404(job_id)
+    if job.state != JobState.COMPLETED:
+        raise HTTPException(status_code=409, detail=f"Job is {job.state.value}, result not ready")
+    doc = job.result.documentation
+    if doc is None or doc.status != "generated":
+        raise HTTPException(status_code=404, detail=(doc.reason if doc else "No report generated"))
+    return doc.markdown
 
 
 @app.post("/api/causix/index", response_model=IndexResponse)

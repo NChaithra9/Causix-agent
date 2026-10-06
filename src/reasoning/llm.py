@@ -59,6 +59,11 @@ class FakeLLM:
         "setup": [], "action": "n/a", "expected": "n/a", "expected_error_code": None,
     })
 
+    DEFAULT_DOCS_RESPONSE = json.dumps({
+        "title": "Incident report", "lessons": [],
+        "summary": "FakeLLM cannot write a summary; configure CAUSIX_LLM_PROVIDER.",
+    })
+
     def __init__(self, response: str | None = None, responses: list[str] | None = None) -> None:
         self.response = response
         self.responses = list(responses or [])
@@ -70,6 +75,8 @@ class FakeLLM:
             return self.responses.pop(0)
         if self.response is not None:
             return self.response
+        if "Documentation Agent" in system:
+            return self.DEFAULT_DOCS_RESPONSE
         if "Scenario Agent" in system:
             return self.DEFAULT_SCENARIO_RESPONSE
         if "Impact Agent" in system:

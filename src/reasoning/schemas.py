@@ -98,6 +98,18 @@ class TestScenario(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class DocumentationReport(BaseModel):
+    """Output of the Documentation Agent (Phase 7): a readable RCA report in Markdown.
+    Facts are rendered by code from the analysis; the LLM only adds the title, summary, lessons."""
+    status: str                                   # "generated" | "skipped"
+    reason: str | None = None
+    title: str = ""
+    summary: str = ""
+    lessons: list[str] = Field(default_factory=list)
+    markdown: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
 class AnalysisResult(BaseModel):
     issue: IssueUnderstanding
     evidence: list[Evidence] = Field(default_factory=list)
@@ -106,4 +118,5 @@ class AnalysisResult(BaseModel):
     fix: FixRecommendation | None = None
     impact: ImpactExplanation | None = None
     scenario: TestScenario | None = None
+    documentation: DocumentationReport | None = None
     notes: list[str] = Field(default_factory=list)
