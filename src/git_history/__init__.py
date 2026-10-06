@@ -5,23 +5,30 @@ Public API:
     get_commit_file_relationships(commits) -> list[Relationship]   (Commit -MODIFIES-> File)
     blame_line(repo_path, file_path, line_number) -> BlameInfo | None
     is_git_repository(repo_path) -> bool
+    get_commits_between(repo_path, previous, current) -> list[CommitInfo]   (previous..current)
+    get_file_changes_between(repo_path, previous, current) -> list[FileChange]   (git diff -M)
 """
 
 from .git_reader import (
     blame_line,
     get_commit_file_relationships,
     get_commits,
+    get_commits_between,
+    get_file_changes_between,
     is_git_repository,
     open_repository,
 )
-from .models import BlameInfo, CommitInfo
+from .models import BlameInfo, CommitInfo, FileChange
 
 __all__ = [
     "BlameInfo",
     "CommitInfo",
+    "FileChange",
     "blame_line",
     "get_commit_file_relationships",
     "get_commits",
+    "get_commits_between",
+    "get_file_changes_between",
     "is_git_repository",
     "open_repository",
 ]

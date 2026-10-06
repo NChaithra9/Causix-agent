@@ -16,13 +16,15 @@ from pathlib import Path
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 from ..parser.models import Relationship, RelationshipType
-from .models import BlameInfo, CommitInfo
+from .models import BlameInfo, CommitInfo, FileChange
 
 __all__ = [
     "is_git_repository",
     "open_repository",
     "get_commits",
     "get_commit_file_relationships",
+    "get_commits_between",
+    "get_file_changes_between",
     "blame_line",
 ]
 
@@ -77,6 +79,60 @@ def get_commits(repo_path: str | Path, max_count: int | None = None) -> list[Com
             )
         )
     return commits
+
+
+def _commit_info(commit) -> CommitInfo:
+    return CommitInfo(
+        commit_hash=commit.hexsha,
+        author_name=commit.author.name or "",
+        author_email=commit.author.email or "",
+        committed_at=datetime.fromtimestamp(commit.committed_date, tz=timezone.utc),
+        message=commit.message.strip(),
+        changed_files=sorted(commit.stats.files.keys()),
+    )
+
+
+def get_commits_between(
+    repo_path: str | Path, previous: str, current: str, max_count: int | None = None
+) -> list[CommitInfo]:
+    """Commits reachable from ``current`` but not from ``previous`` (``git log previous..current``),
+    most recent first. ``[]`` when it is not a Git repository or a revision does not exist."""
+    repo = open_repository(repo_path)
+    if repo is None:
+        return []
+    try:
+        return [
+            _commit_info(commit)
+            for commit in repo.iter_commits(f"{previous}..{current}", max_count=max_count)
+        ]
+    except (GitCommandError, ValueError):
+        return []
+
+
+def get_file_changes_between(
+    repo_path: str | Path, previous: str, current: str
+) -> list[FileChange]:
+    """Files that differ between two revisions (``git diff --name-status -M``), with renames
+    detected by Git itself. ``[]`` when it is not a Git repository or a revision does not exist."""
+    repo = open_repository(repo_path)
+    if repo is None:
+        return []
+    try:
+        raw = repo.git.diff("--name-status", "-M", "-z", previous, current)
+    except GitCommandError:
+        return []
+    tokens = [t for t in raw.split("\0") if t]
+    changes: list[FileChange] = []
+    index = 0
+    while index < len(tokens):
+        status = tokens[index][0]
+        if status in ("R", "C") and index + 2 < len(tokens):
+            changes.append(FileChange(path=tokens[index + 2], status="R", old_path=tokens[index + 1]))
+            index += 3
+        else:
+            changes.append(FileChange(path=tokens[index + 1], status=status))
+            index += 2
+    return sorted(changes, key=lambda c: (c.path, c.status))
 
 
 def get_commit_file_relationships(commits: list[CommitInfo]) -> list[Relationship]:

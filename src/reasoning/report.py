@@ -50,6 +50,15 @@ def render_report(result: AnalysisResult, title: str, summary: str, lessons: lis
         ex = sc.execution
         L += ["", "Execution: " + (f"**{ex.status}**" + (f" - {ex.details}" if ex.details else "")
                                      if ex else "not run"), ""]
+    arch = result.architecture
+    if arch and arch.status not in ("SKIPPED",):
+        L += ["## Architecture changes", arch.summary, ""]
+        L += [f"- {c.change_type} {c.category}: {c.name}" + (f" ({c.detail})" if c.detail else "")
+              for c in arch.changes[:15]]
+        if len(arch.changes) > 15:
+            L.append(f"- ... and {len(arch.changes) - 15} more")
+        L += [f"- Could not determine: {u}" for u in arch.unresolved]
+        L += ["", "_" + " ".join(arch.caveats) + "_", ""]
     if lessons:
         L += ["## Prevention"] + [f"- {x}" for x in lessons] + [""]
     warnings = (rca.warnings if rca else []) + (fix.warnings if fix else []) \
