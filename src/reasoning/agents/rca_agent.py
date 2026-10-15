@@ -20,6 +20,7 @@ class _RawRCA(BaseModel):
     confidence: str = "low"
     affected_component: str | None = None
     location: str | None = None
+    location_id: str | None = None        # evidence id (e.g. "E3") whose location is the fix site
     evidence_ids: list[str] = Field(default_factory=list)
     reasoning: str = ""
     suggested_fix: str | None = None
@@ -28,6 +29,51 @@ class _RawRCA(BaseModel):
 
 def insufficient(reason: str) -> RootCauseAnalysis:
     return RootCauseAnalysis(root_cause=reason, confidence="low", insufficient_evidence=True)
+
+
+def _file_of(location: str) -> str:
+    return location.partition("::")[0]
+
+
+def resolve_location(raw: _RawRCA, evidence: list[Evidence], by_id: dict[str, Evidence],
+                     warnings: list[str]) -> str | None:
+    """Pick the fix location from what the evidence actually contains, in this order:
+    1. the evidence id the model chose (location_id), 2. an exact location match,
+    3. a loose match (``file.py:59``, ``file.py``) when exactly one evidence location fits,
+    4. the engine's own KNOWN fix_localization location.
+    Anything else is dropped, never taken from free text."""
+    known = [ev.location for ev in evidence if ev.location]
+    if raw.location_id:
+        ev = by_id.get(raw.location_id.strip().upper())
+        if ev and ev.location:
+            return ev.location
+        warnings.append(f"Ignored location_id {raw.location_id}: no evidence location there.")
+
+    if raw.location:
+        if raw.location in known:
+            return raw.location
+        # loose forms only: "file.py", "file.py:59" or "file.py:59-70". A named method that is not
+        # in the evidence ("file.py::Ghost") is never re-pointed at a different method.
+        loc = raw.location.strip()
+        head, _, tail = loc.rpartition(":")
+        file_part = head if head and tail.replace("-", "").isdigit() else loc
+        fits = [] if "::" in file_part else list(dict.fromkeys(
+            k for k in known if _file_of(k) == file_part))
+        if len(fits) > 1:   # several locations in that file: prefer the engine-localized one
+            engine = [ev.location for ev in evidence
+                      if ev.source == "fix_localization" and ev.location in fits]
+            fits = engine[:1] or fits
+        if len(fits) == 1:
+            warnings.append(f"Matched location '{raw.location}' to evidence location '{fits[0]}'.")
+            return fits[0]
+        warnings.append(f"Dropped location '{raw.location}': not found in the evidence.")
+
+    for ev in evidence:     # fall back to the deterministic engine's exact location
+        if ev.source == "fix_localization" and ev.location and "[KNOWN]" in ev.description:
+            warnings.append(f"No usable location from the model; used the fix-localization location "
+                            f"'{ev.location}'.")
+            return ev.location
+    return None
 
 
 def ground(raw: _RawRCA, evidence: list[Evidence]) -> RootCauseAnalysis:
@@ -43,11 +89,7 @@ def ground(raw: _RawRCA, evidence: list[Evidence]) -> RootCauseAnalysis:
         elif key not in by_id:
             warnings.append(f"Dropped citation {eid}: no such evidence item.")
 
-    location = raw.location
-    known_locations = {ev.location for ev in evidence if ev.location}
-    if location and location not in known_locations:
-        warnings.append(f"Dropped location '{location}': not found in the evidence.")
-        location = None
+    location = resolve_location(raw, evidence, by_id, warnings)
 
     confidence = raw.confidence.strip().lower()
     if confidence not in CONFIDENCE_LEVELS:

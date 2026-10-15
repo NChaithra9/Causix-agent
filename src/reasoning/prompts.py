@@ -25,7 +25,8 @@ Return ONLY a JSON object with these keys:
   "root_cause"           - one or two sentences: the most likely cause
   "confidence"           - "low", "medium" or "high"
   "affected_component"   - service/class/module most affected, or null
-  "location"             - the exact location string of the evidence item where the fix belongs, or null
+  "location_id"          - the evidence id (e.g. "E2") of the item where the fix belongs, or null
+  "location"             - that item's exact location string copied from the evidence, or null
   "evidence_ids"         - list of evidence ids that support the conclusion, e.g. ["E1", "E3"]
   "reasoning"            - short explanation linking the evidence to the root cause
   "suggested_fix"        - a short description of the change to make, or null

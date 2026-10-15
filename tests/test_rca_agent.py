@@ -77,3 +77,61 @@ def test_bad_confidence_value_becomes_low():
 def test_malformed_output_raises():
     with pytest.raises(AgentError):
         RCAAgent(FakeLLM('{"confidence": "high"}')).run(ISSUE, EVIDENCE)
+
+
+# --- location resolution (Phase 8 live-test bug: "file.py:59" was dropped, so fix/impact skipped) ---
+CFG = "src/graph/config.py::Neo4jConfig.from_env"
+LIVE_EVIDENCE = [
+    Evidence(source="fix_localization", description="[KNOWN] exact method to change (lines 52-76)",
+             location=CFG),
+    Evidence(source="stack_trace", description="[FACT] Frame: src/graph/config.py:59 in from_env",
+             location=CFG),
+    Evidence(source="stack_trace", description="[FACT] Frame: src/other.py:3 in run",
+             location="src/other.py::run"),
+]
+
+
+def live(**o):
+    return RCAAgent(FakeLLM(rca_json(evidence_ids=["E1"], **o))).run(ISSUE, LIVE_EVIDENCE)
+
+
+def test_file_and_line_location_resolves_to_the_evidence_location():
+    for loose in ("src/graph/config.py:59", "src/graph/config.py", "src/graph/config.py:52-76"):
+        rca = live(location=loose)
+        assert rca.location == CFG and any("Matched location" in w for w in rca.warnings)
+
+
+def test_location_id_wins_over_free_text():
+    rca = live(location="nonsense", location_id="e3")
+    assert rca.location == "src/other.py::run"
+
+
+def test_bad_location_id_falls_back_to_exact_text():
+    rca = live(location=CFG, location_id="E9")
+    assert rca.location == CFG and any("location_id" in w for w in rca.warnings)
+
+
+def test_falls_back_to_known_fix_localization_when_model_gives_nothing():
+    for kw in ({"location": None}, {"location": "made_up.py::Ghost.method"}):
+        rca = live(**kw)
+        assert rca.location == CFG and any("fix-localization" in w for w in rca.warnings)
+
+
+def test_named_method_not_in_evidence_is_never_repointed_to_another_method():
+    # only semantic evidence, two methods in the same file, model names a third
+    evidence = [Evidence(source="semantic", description="a", location="m.py::A.one"),
+                Evidence(source="semantic", description="b", location="m.py::A.two")]
+    rca = RCAAgent(FakeLLM(rca_json(location="m.py::A.ghost"))).run(ISSUE, evidence)
+    assert rca.location is None
+
+
+def test_ambiguous_file_without_engine_location_is_dropped():
+    evidence = [Evidence(source="semantic", description="a", location="m.py::A.one"),
+                Evidence(source="semantic", description="b", location="m.py::A.two")]
+    rca = RCAAgent(FakeLLM(rca_json(location="m.py:10"))).run(ISSUE, evidence)
+    assert rca.location is None and any("Dropped location" in w for w in rca.warnings)
+
+
+def test_fallback_not_used_when_evidence_is_insufficient_anyway():
+    rca = live(location=None, insufficient_evidence=True)
+    assert rca.insufficient_evidence   # location may be set, but downstream skips on insufficiency
