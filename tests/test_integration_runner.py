@@ -31,8 +31,9 @@ class FakeOrch:
         return SimpleNamespace(status=SimpleNamespace(value=self.status), duration=1.5, evidence=ev)
 
 
-def runner(orch, repo="/repo", docker=True):
-    return ValidationScenarioRunner(lambda: repo, orchestrator=orch, docker_check=lambda: docker)
+def runner(orch, repo="/repo", docker=True, git=True):
+    return ValidationScenarioRunner(lambda: repo, orchestrator=orch, docker_check=lambda: docker,
+                                    git_check=lambda path: git)
 
 
 def test_status_mapping_is_strict():
@@ -69,3 +70,14 @@ def test_patch_really_applies_with_git(tmp_path):
     subprocess.run(["git", "apply", str(tmp_path / "p.patch")], cwd=repo, check=True)
     assert "return False" in (repo / "billing" / "refunds.py").read_text()
     assert (repo / test_path_for(SC, f)).read_text() == f.regression_test.code
+
+
+def test_not_run_when_repo_is_not_a_git_root(tmp_path):
+    orch = FakeOrch()
+    res = runner(orch, repo=str(tmp_path), git=False).run(SC, fix())
+    assert res.status == "not_run" and "git repository" in res.details and orch.request is None
+    # default check: a plain folder is not a git root, a folder with .git is
+    plain = ValidationScenarioRunner(lambda: str(tmp_path), orchestrator=orch, docker_check=lambda: True)
+    assert plain.run(SC, fix()).status == "not_run" and orch.request is None
+    (tmp_path / ".git").mkdir()
+    assert plain.run(SC, fix()).status == "passed" and orch.request is not None
