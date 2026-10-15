@@ -6,6 +6,7 @@ the real exit code. No regression test, no diff, no repository or no Docker -> "
 """
 import re
 from collections.abc import Callable
+from pathlib import Path
 
 from src.reasoning.schemas import ExecutionResult, FixRecommendation, TestScenario
 
@@ -40,8 +41,10 @@ def not_run(details: str) -> ExecutionResult:
 class ValidationScenarioRunner:
     def __init__(self, repo_provider: Callable[[], str | None], orchestrator=None,
                  build_command: str | None = DEFAULT_BUILD,
-                 docker_check: Callable[[], bool] | None = None) -> None:
+                 docker_check: Callable[[], bool] | None = None,
+                 git_check: Callable[[str], bool] | None = None) -> None:
         self.repo_provider = repo_provider
+        self._git_check = git_check or (lambda path: (Path(path) / ".git").exists())
         self._orchestrator = orchestrator
         self.build_command = build_command
         self._docker_check = docker_check
@@ -64,6 +67,9 @@ class ValidationScenarioRunner:
         repo = self.repo_provider()
         if not repo:
             return not_run("No indexed repository path is known.")
+        if not self._git_check(repo):
+            return not_run(f"{repo} is not the root of a git repository. The sandbox validates a fresh "
+                           "git clone, so index the repository root (committed changes only).")
         if not self._docker_ok():
             return not_run("Docker is not available on this machine.")
 
